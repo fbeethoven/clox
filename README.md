@@ -1,0 +1,5 @@
+# CRAFTING INTERPRETERS
+
+Implementing a c interpreter for the Lox language following [this tutorial] (https://craftinginterpreters.com/chunks-of-bytecode.html).
+
+Implementing section 14.6
