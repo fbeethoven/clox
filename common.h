@@ -8,4 +8,7 @@
 #include <stdint.h>
 
 
+#define DEBUG_TRACE_EXECUTION
+
+
 #endif  // clox_common_h
