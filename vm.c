@@ -33,9 +33,11 @@ static void runtime_error(const char *format, ...) {
 void init_vm() {
     reset_stack();
     vm.objects = NULL;
+    init_table(&vm.strings);
 }
 
 void free_vm() {
+    free_table(&vm.strings);
     free_objects();
 }
 
@@ -80,8 +82,8 @@ static InterpretResult run() {
                 runtime_error("Operand must be numbers.");      \
                 return INTERPRET_RUNTIME_ERROR;                 \
             }                                                   \
-            double a = AS_NUMBER(pop());                        \
             double b = AS_NUMBER(pop());                        \
+            double a = AS_NUMBER(pop());                        \
             push(value_type(a op b));                           \
         } while (0)
 
