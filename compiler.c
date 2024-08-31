@@ -121,6 +121,7 @@ static void expression();
 static ParseRule* get_rule(TokenType type);
 static void parser_precedence(Precedence precedence);
 static void number();
+static void string();
 
 static void binary() {
     TokenType operator_type = parser.previous.type;
@@ -211,7 +212,7 @@ ParseRule rules[] = {
     [TOKEN_LESS] = {NULL, binary, PREC_COMPARISON},
     [TOKEN_LESS_EQUAL] = {NULL, binary, PREC_COMPARISON},
     [TOKEN_IDENTIFIER] = {NULL, NULL, PREC_NONE},
-    [TOKEN_STRING] = {NULL, NULL, PREC_NONE},
+    [TOKEN_STRING] = {string, NULL, PREC_NONE},
     [TOKEN_NUMBER] = {number, NULL, PREC_NONE},
     [TOKEN_AND] = {NULL, NULL, PREC_NONE},
     [TOKEN_CLASS] = {NULL, NULL, PREC_NONE},
@@ -254,6 +255,12 @@ static void emit_constant(Value value) {
 static void number() {
     double value = strtod(parser.previous.start, NULL);
     emit_constant(NUMBER_VAL(value));
+}
+
+static void string() {
+    emit_constant(OBJ_VAL(
+        copy_string(parser.previous.start + 1, parser.previous.length - 2)
+    ));
 }
 
 bool compile(const char *source, Chunk *chunk) {
