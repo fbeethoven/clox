@@ -17,7 +17,14 @@ $(TARGET): $(OBJS)
 $(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-clean:
-	rm -rf $(BUILD_DIR)
+install: $(TARGET)
+	@mv $(TARGET) $(HOME)/.local/bin/
+	@echo "install clox successfully"
 
-.PHONY: all clean
+uninstall:
+	@rm -f $(HOME)/.local/bin/clox
+
+clean:
+	@rm -rf $(BUILD_DIR)
+
+.PHONY: all clean install
