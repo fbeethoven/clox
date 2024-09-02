@@ -5,7 +5,9 @@
 #include "chunk.h"
 #include "common.h"
 #include "compiler.h"
+#include "object.h"
 #include "scanner.h"
+#include "value.h"
 
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
@@ -45,7 +47,15 @@ typedef struct {
     int depth;
 } Local;
 
-typedef struct {
+typedef enum {
+    TYPE_FUNCTION,
+    TYPE_SCRIPT,
+} FunctionType;
+
+typedef struct Compiler {
+    struct Compiler *enclosing;
+    ObjFunction *function;
+    FunctionType type;
     Local locals[UINT8_COUNT];
     int local_count;
     int scope_depth;
@@ -53,11 +63,10 @@ typedef struct {
 
 Parser parser;
 Compiler *current = NULL;
-Chunk *compiling_chunk;
 
 
 static Chunk *current_chunk() {
-    return compiling_chunk;
+    return &current->function->chunk;
 }
 
 static void error_at(Token *token, const char *message){
@@ -126,17 +135,26 @@ static void emit_bytes(uint8_t byte_1, uint8_t byte_2) {
 }
 
 static void emit_return() {
+    emit_byte(OP_NIL);
     emit_byte(OP_RETURN);
 }
 
-static void end_compiler() {
+static ObjFunction *end_compiler() {
     emit_return();
+
+    ObjFunction *function = current->function;
 
 #ifdef DEBUG_PRINT_CODE
     if (!parser.had_error) {
-        disassemble_chunk(current_chunk(), "code");
+        disassemble_chunk(
+            current_chunk(),
+            function->name != NULL ? function->name->chars  : "<script>"
+        );
     }
 #endif
+
+    current = current->enclosing;
+    return function;
 }
 
 
@@ -150,6 +168,7 @@ static void string(bool can_assign);
 static uint8_t make_constant(Value value);
 
 static void binary(bool can_assign) {
+    (void)can_assign;
     TokenType operator_type = parser.previous.type;
     ParseRule *rule = get_rule(operator_type);
     parser_precedence((Precedence)(rule->precedence + 1));
@@ -170,6 +189,7 @@ static void binary(bool can_assign) {
 }
 
 static void literal(bool can_assign) {
+    (void)can_assign;
     switch(parser.previous.type) {
         case TOKEN_FALSE: emit_byte(OP_FALSE); break;
         case TOKEN_TRUE: emit_byte(OP_TRUE); break;
@@ -285,6 +305,7 @@ static uint8_t parse_variable(const char *error_msg) {
 }
 
 static void mark_initialized() {
+    if (current->scope_depth == 0) return;
     current->locals[current->local_count - 1].depth = current->scope_depth;
 }
 
@@ -311,8 +332,18 @@ static void var_declaration() {
     define_variable(global);
 }
 
+static void function (FunctionType type);
+static void fun_declaration() {
+    uint8_t global = parse_variable("Expect function name.");
+    mark_initialized();
+    function(TYPE_FUNCTION);
+    define_variable(global);
+}
+
 static void declaration() {
-    if (match(TOKEN_VAR)) {
+    if (match(TOKEN_FUN)) {
+        fun_declaration();
+    } else if (match(TOKEN_VAR)) {
         var_declaration();
     } else {
         statement();
@@ -449,6 +480,20 @@ static void for_statement() {
     end_scope();
 }
 
+static void return_statement() {
+    if (current->type == TYPE_SCRIPT) {
+        error("Can't return from top-level code.");
+    }
+
+    if (match(TOKEN_SEMICOLON)) {
+        emit_return();
+    } else {
+        expression();
+        consume(TOKEN_SEMICOLON, "Expect ';' after return value.");
+        emit_byte(OP_RETURN);
+    }
+}
+
 static void statement() {
     if (match(TOKEN_PRINT)) {
         print_statement();
@@ -456,6 +501,8 @@ static void statement() {
         for_statement();
     } else if (match(TOKEN_IF)) {
         if_statement();
+    } else if (match(TOKEN_RETURN)) {
+        return_statement();
     } else if (match(TOKEN_WHILE)) {
         printf("we found a while token, %d\n", __LINE__);
         while_statement();
@@ -508,6 +555,7 @@ static void variable(bool can_assign) {
 }
 
 static void unary(bool can_assign) {
+    (void)can_assign;
     TokenType operator_type = parser.previous.type;
 
     parser_precedence(PREC_UNARY);
@@ -521,11 +569,13 @@ static void unary(bool can_assign) {
 }
 
 static void grouping(bool can_assign) {
+    (void)can_assign;
     expression();
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
 }
 
 static void and_(bool can_assign) {
+    (void)can_assign;
     int end_jump = emit_jump(OP_JUMP_IF_FALSE);
 
     emit_byte(OP_POP);
@@ -535,6 +585,7 @@ static void and_(bool can_assign) {
 }
 
 static void or_(bool can_assign) {
+    (void)can_assign;
     int else_jump = emit_jump(OP_JUMP_IF_FALSE);
     int end_jump = emit_jump(OP_JUMP);
 
@@ -545,8 +596,32 @@ static void or_(bool can_assign) {
     patch_jump(end_jump);
 }
 
+static uint8_t argument_list() {
+    uint8_t arg_count = 0;
+    if (!check(TOKEN_RIGHT_PAREN)) {
+        do {
+            expression();
+            if (arg_count == 255) {
+                error("Can't have more than 255 arguments.");
+            }
+
+            arg_count++;
+        } while (match(TOKEN_COMMA));
+    }
+
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
+
+    return arg_count;
+}
+
+static void call(bool can_assign) {
+    (void)can_assign;
+    uint8_t arg_count = argument_list();
+    emit_bytes(OP_CALL, arg_count);
+}
+
 ParseRule rules[] = {
-    [TOKEN_LEFT_PAREN] = {grouping, NULL, PREC_NONE},
+    [TOKEN_LEFT_PAREN] = {grouping, call, PREC_CALL},
     [TOKEN_RIGHT_PAREN] = {NULL, NULL, PREC_NONE},
     [TOKEN_LEFT_BRACE] = {NULL, NULL, PREC_NONE},
     [TOKEN_RIGHT_BRACE] = {NULL, NULL, PREC_NONE},
@@ -606,28 +681,47 @@ static void emit_constant(Value value) {
     emit_bytes(OP_CONSTANT, make_constant(value));
 }
 
-static void init_compiler(Compiler *compiler) {
+static void init_compiler(Compiler *compiler, FunctionType type) {
+    compiler->function = NULL;
+    compiler->type = type;
+
     compiler->local_count = 0;
     compiler->scope_depth = 0;
+
+    compiler->function = new_function();
+    compiler->enclosing = current;
     current = compiler;
+
+    if (type != TYPE_SCRIPT) {
+        current->function->name = copy_string(
+            parser.previous.start,
+            parser.previous.length
+        );
+    }
+
+    Local *local = &current->locals[current->local_count++];
+    local->depth = 0;
+    local->name.start = "";
+    local->name.length = 0;
 }
 
 static void number(bool can_assign) {
+    (void)can_assign;
     double value = strtod(parser.previous.start, NULL);
     emit_constant(NUMBER_VAL(value));
 }
 
 static void string(bool can_assign) {
+    (void)can_assign;
     emit_constant(OBJ_VAL(
         copy_string(parser.previous.start + 1, parser.previous.length - 2)
     ));
 }
 
-bool compile(const char *source, Chunk *chunk) {
+ObjFunction *compile(const char *source) {
     init_scanner(source);
     Compiler compiler;
-    init_compiler(&compiler);
-    compiling_chunk = chunk;
+    init_compiler(&compiler, TYPE_SCRIPT);
 
     parser.had_error = false;
     parser.panic_mode = false;
@@ -638,6 +732,35 @@ bool compile(const char *source, Chunk *chunk) {
         declaration();
     }
 
-    end_compiler();
-    return !parser.had_error;
+    ObjFunction *function = end_compiler();
+    return parser.had_error ? NULL : function;
 }
+
+static void function(FunctionType type) {
+    Compiler compiler;
+    init_compiler(&compiler, type);
+    begin_scope();
+
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+
+    if (!check(TOKEN_RIGHT_PAREN)) {
+        do {
+            current->function->arity++;
+            if (current->function->arity > 255) {
+                error_at_current("Can't have more than 255 parameters.");
+            }
+
+            uint8_t constant = parse_variable("Expect parameter name.");
+            define_variable(constant);
+        } while (match(TOKEN_COMMA));
+    }
+
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+    consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+
+    block();
+
+    ObjFunction *function = end_compiler();
+    emit_bytes(OP_CONSTANT, make_constant(OBJ_VAL(function)));
+}
+
