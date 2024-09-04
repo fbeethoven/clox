@@ -63,6 +63,10 @@ static void define_native(const char *name, NativeFn function) {
 void init_vm() {
     reset_stack();
     vm.objects = NULL;
+    vm.gray_count = 0;
+    vm.gray_capacity = 0;
+    vm.gray_stack = NULL;
+
     init_table(&vm.globals);
     init_table(&vm.strings);
 

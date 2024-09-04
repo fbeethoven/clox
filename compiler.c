@@ -6,6 +6,7 @@
 #include "common.h"
 #include "compiler.h"
 #include "object.h"
+#include "memory.h"
 #include "scanner.h"
 #include "value.h"
 
@@ -433,7 +434,6 @@ static void emit_loop(int loop_start) {
 }
 
 static void while_statement() {
-    printf("we processed line: %d\n", __LINE__);
     int loop_start = current_chunk()->count;
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
     expression();
@@ -516,7 +516,6 @@ static void statement() {
     } else if (match(TOKEN_RETURN)) {
         return_statement();
     } else if (match(TOKEN_WHILE)) {
-        printf("we found a while token, %d\n", __LINE__);
         while_statement();
     } else if (match(TOKEN_LEFT_BRACE)) {
         begin_scope();
@@ -789,6 +788,14 @@ ObjFunction *compile(const char *source) {
 
     ObjFunction *function = end_compiler();
     return parser.had_error ? NULL : function;
+}
+
+void mark_compiler_roots() {
+    Compiler *compiler = current;
+    while (compiler != NULL) {
+        mark_object((Obj *)compiler->function);
+        compiler = compiler->enclosing;
+    }
 }
 
 static void function(FunctionType type) {
