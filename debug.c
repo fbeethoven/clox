@@ -79,6 +79,10 @@ int disassemble_instruction(Chunk *chunk, int offset) {
             return byte_instruction("OP_GET_UPVALUE", chunk, offset);
         case OP_DEFINE_GLOBAL:
             return constant_instruction("OP_DEFINE_GLOBAL", chunk, offset);
+        case OP_GET_PROPERTY:
+            return constant_instruction("OP_GET_PROPERTY", chunk, offset);
+        case OP_SET_PROPERTY:
+            return constant_instruction("OP_SET_PROPERTY", chunk, offset);
         case OP_EQUAL:
             return simple_instruction("OP_EQUAL", offset);
         case OP_GREATER:
@@ -131,6 +135,8 @@ int disassemble_instruction(Chunk *chunk, int offset) {
 
             return offset;
         }
+        case OP_CLASS:
+            return constant_instruction("OP_CLASS", chunk, offset);
         case OP_PRINT:
             return simple_instruction("OP_PRINT", offset);
         default:

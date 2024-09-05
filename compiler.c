@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -349,8 +350,22 @@ static void fun_declaration() {
     define_variable(global);
 }
 
+static void class_declaration() {
+    consume(TOKEN_IDENTIFIER, "Expect class name.");
+    uint8_t name_constant = identifier_constant(&parser.previous);
+    declare_variable();
+
+    emit_bytes(OP_CLASS, name_constant);
+    define_variable(name_constant);
+
+    consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+    consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+}
+
 static void declaration() {
-    if (match(TOKEN_FUN)) {
+    if (match(TOKEN_CLASS)) {
+        class_declaration();
+    } else if (match(TOKEN_FUN)) {
         fun_declaration();
     } else if (match(TOKEN_VAR)) {
         var_declaration();
@@ -673,13 +688,25 @@ static void call(bool can_assign) {
     emit_bytes(OP_CALL, arg_count);
 }
 
+static void dot(bool can_assign) {
+    consume(TOKEN_IDENTIFIER, "Expect property name after '.'.");
+    uint8_t name = identifier_constant(&parser.previous);
+
+    if (can_assign && match(TOKEN_EQUAL)) {
+        expression();
+        emit_bytes(OP_SET_PROPERTY, name);
+    } else {
+        emit_bytes(OP_GET_PROPERTY, name);
+    }
+}
+
 ParseRule rules[] = {
     [TOKEN_LEFT_PAREN] = {grouping, call, PREC_CALL},
     [TOKEN_RIGHT_PAREN] = {NULL, NULL, PREC_NONE},
     [TOKEN_LEFT_BRACE] = {NULL, NULL, PREC_NONE},
     [TOKEN_RIGHT_BRACE] = {NULL, NULL, PREC_NONE},
     [TOKEN_COMMA] = {NULL, NULL, PREC_NONE},
-    [TOKEN_DOT] = {NULL, NULL, PREC_NONE},
+    [TOKEN_DOT] = {NULL, dot, PREC_CALL},
     [TOKEN_MINUS] = {unary, binary, PREC_TERM},
     [TOKEN_PLUS] = {NULL, binary, PREC_TERM},
     [TOKEN_SEMICOLON] = {NULL, NULL, PREC_NONE},
