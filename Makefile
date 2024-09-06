@@ -1,4 +1,4 @@
-CFLAGS = -Wall -Wextra -g
+CFLAGS = -Wall -Wextra -ggdb
 
 SRCS = $(wildcard *.c)
 
