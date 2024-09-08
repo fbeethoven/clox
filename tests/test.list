@@ -1,0 +1,3 @@
+./build/clox ./tests/closure.lox
+./build/clox ./tests/example.lox
+./build/clox ./tests/superclass.lox
