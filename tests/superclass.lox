@@ -18,4 +18,3 @@ class C < B {}
 
 C().test();
 
-var ;

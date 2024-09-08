@@ -17,9 +17,9 @@ Enjoy your cup of coffee and chicory
 
 :b shell 35
 ./build/clox ./tests/superclass.lox
-:i returncode 65
-:b stdout 0
+:i returncode 0
+:b stdout 9
+A method
 
-:b stderr 46
-[line 21] Error at ';': Expect variable name.
+:b stderr 0
 
