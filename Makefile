@@ -21,6 +21,12 @@ install: $(TARGET)
 	@mv $(TARGET) $(HOME)/.local/bin/
 	@echo "install clox successfully"
 
+test-update: $(TARGET)
+	./tests/rere.py record ./tests/test.list
+
+test: $(TARGET)
+	./tests/rere.py replay ./tests/test.list
+
 uninstall:
 	@rm -f $(HOME)/.local/bin/clox
 
